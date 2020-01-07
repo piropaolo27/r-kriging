@@ -6,6 +6,8 @@ library(data.table)
 library(KRIG)
 library(plotly)
 library(colorRamps)
+library(rnaturalearth)
+library(uniformly)
 
 # read csv data
 november_weather <- read.csv("csv/november_weather_jt.csv", stringsAsFactors = FALSE)
@@ -26,7 +28,11 @@ november_weather <- november_weather %>%
 X <- data.matrix(november_weather[2:3])
 Z <- data.matrix(november_weather[4])
 
-m <- c(170, 170)
+japan <- ne_countries(country = "japan")
+jpvert <- japan@polygons[[1]]@Polygons[[2]]@coords
+points <- runif_in_polygon(n = 1000, vertices = jpvert)
+
+m <- c(10, 10)
 lon_lim <- c(min(X[, 1]), max(X[, 1]))
 lat_lim <- c(min(X[, 2]), max(X[, 2]))
 
@@ -42,7 +48,10 @@ Y2 <- seq(lat_lim[1], lat_lim[2], length.out = m[2])
 # create a data frame from all combinations of factor variables
 Y <- expand.grid(Y1, Y2)
 Y <- as.matrix(Y)
-
+point <- points
+Y <- data.matrix(points)
+Y1 <- points[,1]
+Y2 <- points[,2]
 dist <- function(x, y) {
   return(sqrt(sum((x - y) ^ 2)))
 }
@@ -52,7 +61,7 @@ V <- variogram(Z, X, dist)
 d <- V$distance[V$sort + 1, 1]
 
 spherical_variogram <- function(d, s, t) {
-  return(s - spherical_kernel(d, s, t))
+  return(s - exp_kernel(d, s, t))
 }
 
 fit_spherical_kernel <- function(p) {
@@ -84,7 +93,7 @@ points(d,
 # setting the kernel based on parameters from the variogram
 Kern <- function(x, y) {
   h <- sqrt(sum((x - y) ^ 2))
-  return(spherical_kernel(h, NLM$estimate[1], NLM$estimate[2]))
+  return(exp_kernel(h, 0.01, 3))
 }
 
 # computing covariance matrices
@@ -105,20 +114,5 @@ KRIG <- Krig(
   cinv = "syminv"
 )
 
-W <- matrix(KRIG$Z, m[1], m[2])
-
-# plotting level curves results
-cols <- matlab.like2(40)
-plot_ly(
-  x = Y1,
-  y = Y2,
-  z = W,
-  type = "contour",
-  colors = cols,
-  contours = list(
-    start = 0,
-    size = 1,
-    end = 30,
-    showlabels = TRUE
-  )
-)
+W1 <- KRIG$Z
+plot_ly(x = Y1, y = Y2)
