@@ -31,6 +31,13 @@ november_weather <- november_weather %>%
 X <- data.matrix(november_weather[2:3])
 Z <- data.matrix(november_weather[4])
 
+# sampling
+n <- 5
+samples <- sample(1:nrow(X), n)
+probe_x = X[samples, 1]
+probe_y = X[samples, 2]
+probe_z = Z[samples, 1]
+
 conv <- convHull(X)
 hull_pol <- conv@polygons@polygons[[1]]@Polygons[[1]]@coords
 
@@ -59,6 +66,21 @@ lat_lim <- c(lat_lim[1] - lat_loc[1], lat_lim[2] + lat_loc[2])
 # generate regular sequences
 Y1 <- seq(lon_lim[1], lon_lim[2], length.out = m[1])
 Y2 <- seq(lat_lim[1], lat_lim[2], length.out = m[2])
+
+# add probe points
+m <- c(200 + n, 200 + n)
+X <- data.matrix(X[-samples, 1:2])
+Z <- data.matrix(Z[-samples])
+Y1 <- sort(append(Y1, probe_x))
+Y2 <- sort(append(Y2, probe_y))
+
+# verify function
+verify <- function(n, W, Y1, Y2, probe_x, probe_y, probe_z) {
+  for (i in 1:n) {
+    cat("Predicted temperature:", W[which(Y2 == probe_y[i]), which(Y1 == probe_x[i])], "\n")
+    cat("Actual temperature:", probe_z[i], "\n")
+  }
+}
 
 # create a data frame from all combinations of factor variables
 grid <- expand.grid(x=Y1, y=Y2)
@@ -95,6 +117,7 @@ plot_japan <- function(x, y, z) {
   )
 }
 
+
 # simple kriging
 KRIG <- Krig(
   Z = Z,
@@ -108,7 +131,9 @@ KRIG <- Krig(
 
 W <- matrix(KRIG$Z, m[1], m[2])
 W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-plot_japan(Y1, Y2, W)
+verify(n, W, Y1, Y2, probe_x, probe_y, probe_z)
+# plot_japan(Y1, Y2, W)
+
 
 # ordinary kriging
 KRIG <- Krig(
@@ -123,7 +148,9 @@ KRIG <- Krig(
 
 W <- matrix(KRIG$Z, m[1], m[2])
 W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+verify(n, W, Y1, Y2, probe_x, probe_y, probe_z)
 # plot_japan(Y1, Y2, W)
+
 
 # kriging universal
 G <- rbind(t(X), t(X * X), t(X * X * X))
@@ -143,6 +170,7 @@ W <- matrix(KRIG$Z, m[1], m[2])
 W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
 # plot_japan(Y1, Y2, W)
 
+
 # idw
 data <- data_frame(x = X[, 1], y = X[, 2], val = Z[, 1])
 coordinates(data) =  ~ x + y
@@ -154,6 +182,7 @@ predictions = idw(formula = val ~ 1,
 W <- matrix(predictions$var1.pred, m[1], m[2])
 W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
 # plot_japan(Y1, Y2, W)
+
 
 # linear regression
 data <- data_frame(x = X[, 1], y = X[, 2], val = Z[, 1])
