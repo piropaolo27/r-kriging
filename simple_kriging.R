@@ -10,6 +10,7 @@ library(rnaturalearth)
 library(uniformly)
 library(sp)
 library(dismo)
+library(gstat)
 
 # read csv data
 november_weather <- read.csv("csv/november_weather_jt.csv", stringsAsFactors = FALSE)
@@ -36,6 +37,8 @@ japan <- ne_countries(country = "japan")
 jpvert <- japan@polygons[[1]]@Polygons[[2]]@coords
 vertsX <- hullPoly[,1]
 vertsY <- hullPoly[,2]
+#vertsX <- jpvert[,1]
+#vertsY <- jpvert[,2]
 #points <- runif_in_polygon(n = 1000, vertices = jpvert)
 plot_ly(x = vertsX, y = vertsY)
 m <- c(200, 200)
@@ -52,8 +55,8 @@ Y1 <- seq(lon_lim[1], lon_lim[2], length.out = m[1])
 Y2 <- seq(lat_lim[1], lat_lim[2], length.out = m[2])
 
 # create a data frame from all combinations of factor variables
-Y <- expand.grid(Y1, Y2)
-Y <- as.matrix(Y)
+grid <- expand.grid(x=Y1, y=Y2)
+Y <- as.matrix(grid)
 point <- points
 #Y <- data.matrix(points)
 #Y1 <- points[,1]
@@ -109,7 +112,7 @@ k = Kov(Y, X, Kern)
 G = matrix(0, 1, 1)
 g = matrix(0, 1, 1)
 
-# kriging
+# kriging simple
 KRIG <- Krig(
   Z = Z,
   K = K,
@@ -125,7 +128,141 @@ W <- matrix(KRIG$Z, m[1], m[2])
 for (i in 1:m[1]) {
   for (j in 1:m[2])
     if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
-      W[i,j] = NA
+      W[j,i] = NA
+}
+
+# plotting level curves results
+cols <- matlab.like2(40)
+plot_ly(
+  x = Y1,
+  y = Y2,
+  z = W,
+  type = "contour",
+  colors = cols,
+  contours = list(
+    start = 0,
+    size = 1,
+    end = 30,
+    showlabels = TRUE
+  )
+)
+
+# ordinary kriging
+KRIG <- Krig(
+  Z = Z,
+  K = K,
+  k = k,
+  G = G,
+  g = g,
+  type = "ordinary",
+  cinv = "syminv"
+)
+
+W <- matrix(KRIG$Z, m[1], m[2])
+
+for (i in 1:m[1]) {
+  for (j in 1:m[2])
+    if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
+      W[j,i] = NA
+}
+
+# plotting level curves results
+cols <- matlab.like2(40)
+plot_ly(
+  x = Y1,
+  y = Y2,
+  z = W,
+  type = "contour",
+  colors = cols,
+  contours = list(
+    start = 0,
+    size = 1,
+    end = 30,
+    showlabels = TRUE
+  )
+)
+
+# kriging universal
+G<-rbind( t( X ), t( X * X ), t( X * X * X ) )
+
+g<-rbind( t( Y ), t( Y * Y ), t( Y * Y * Y ) )
+
+KRIG <- Krig(
+  Z = Z,
+  K = K,
+  k = k,
+  G = G,
+  g = g,
+  type = "universal",
+  cinv = "syminv"
+)
+
+W <- matrix(KRIG$Z, m[1], m[2])
+
+for (i in 1:m[1]) {
+  for (j in 1:m[2])
+    if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
+      W[j,i] = NA
+}
+
+# plotting level curves results
+cols <- matlab.like2(40)
+plot_ly(
+  x = Y1,
+  y = Y2,
+  z = W,
+  type = "contour",
+  colors = cols,
+  contours = list(
+    start = 0,
+    size = 1,
+    end = 30,
+    showlabels = TRUE
+  )
+)
+
+#idw
+data <- data_frame(x = X[,1], y = X[,2], val = Z[,1])
+coordinates(data)=~x+y
+coordinates(grid)=~x+y
+predictions = idw(formula=val~1, 
+                    locations = data, newdata = grid)
+
+W <- matrix(predictions$var1.pred, m[1], m[2])
+
+for (i in 1:m[1]) {
+  for (j in 1:m[2])
+    if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
+      W[j,i] = NA
+}
+
+# plotting level curves results
+cols <- matlab.like2(40)
+plot_ly(
+  x = Y1,
+  y = Y2,
+  z = W,
+  type = "contour",
+  colors = cols,
+  contours = list(
+    start = 0,
+    size = 1,
+    end = 30,
+    showlabels = TRUE
+  )
+)
+
+#linear regression
+data <- data_frame(x = X[,1], y = X[,2], val = Z[,1])
+
+model <- lm(val~(x+y), data = data)
+predictions <- predict(model, new = grid)
+W <- matrix(predictions, m[1], m[2])
+
+for (i in 1:m[1]) {
+  for (j in 1:m[2])
+    if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
+      W[j,i] = NA
 }
 
 # plotting level curves results
