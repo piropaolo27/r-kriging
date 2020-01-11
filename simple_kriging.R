@@ -8,6 +8,8 @@ library(plotly)
 library(colorRamps)
 library(rnaturalearth)
 library(uniformly)
+library(sp)
+library(dismo)
 
 # read csv data
 november_weather <- read.csv("csv/november_weather_jt.csv", stringsAsFactors = FALSE)
@@ -28,16 +30,20 @@ november_weather <- november_weather %>%
 X <- data.matrix(november_weather[2:3])
 Z <- data.matrix(november_weather[4])
 
+conv <- convHull(X)
+hullPoly <- conv@polygons@polygons[[1]]@Polygons[[1]]@coords
 japan <- ne_countries(country = "japan")
 jpvert <- japan@polygons[[1]]@Polygons[[2]]@coords
-points <- runif_in_polygon(n = 1000, vertices = jpvert)
-
-m <- c(10, 10)
+vertsX <- hullPoly[,1]
+vertsY <- hullPoly[,2]
+#points <- runif_in_polygon(n = 1000, vertices = jpvert)
+plot_ly(x = vertsX, y = vertsY)
+m <- c(200, 200)
 lon_lim <- c(min(X[, 1]), max(X[, 1]))
 lat_lim <- c(min(X[, 2]), max(X[, 2]))
 
-lon_loc <- c(2, 2)
-lat_loc <- c(2, 2)
+lon_loc <- c(0.1, 0.1)
+lat_loc <- c(0.1, 0.1)
 lon_lim <- c(lon_lim[1] - lon_loc[1], lon_lim[2] + lon_loc[2])
 lat_lim <- c(lat_lim[1] - lat_loc[1], lat_lim[2] + lat_loc[2])
 
@@ -49,9 +55,9 @@ Y2 <- seq(lat_lim[1], lat_lim[2], length.out = m[2])
 Y <- expand.grid(Y1, Y2)
 Y <- as.matrix(Y)
 point <- points
-Y <- data.matrix(points)
-Y1 <- points[,1]
-Y2 <- points[,2]
+#Y <- data.matrix(points)
+#Y1 <- points[,1]
+#Y2 <- points[,2]
 dist <- function(x, y) {
   return(sqrt(sum((x - y) ^ 2)))
 }
@@ -114,5 +120,26 @@ KRIG <- Krig(
   cinv = "syminv"
 )
 
-W1 <- KRIG$Z
-plot_ly(x = Y1, y = Y2)
+W <- matrix(KRIG$Z, m[1], m[2])
+
+for (i in 1:m[1]) {
+  for (j in 1:m[2])
+    if (!point.in.polygon(Y1[i], Y2[j], vertsX, vertsY))
+      W[i,j] = NA
+}
+
+# plotting level curves results
+cols <- matlab.like2(40)
+plot_ly(
+  x = Y1,
+  y = Y2,
+  z = W,
+  type = "contour",
+  colors = cols,
+  contours = list(
+    start = 0,
+    size = 1,
+    end = 30,
+    showlabels = TRUE
+  )
+)
