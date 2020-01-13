@@ -12,24 +12,28 @@ library(sp)
 library(dismo)
 library(gstat)
 
+results <- tibble(actual_tmpc = numeric(), predicted_tmpc = numeric(), accuracy = numeric(), method = character())
+
 # read csv data
-november_weather <- read.csv("csv/november_weather_jt.csv", stringsAsFactors = FALSE)
-november_weather <- november_weather %>% select(station, lon, lat, tmpf)
+december_weather <- read.csv("csv/december_weather_fr.csv", stringsAsFactors = FALSE)
+december_weather <- december_weather %>% dplyr::select(station, lon, lat, tmpf)
 
 # convert into celsius
-november_weather <- november_weather %>%
+december_weather <- december_weather %>%
                     mutate(tmpc = convert_temperature(tmpf,
                                                       old_metric = "f",
                                                       new_metric = "c"))
 
 # calc average temperature and count measures
-november_weather <- november_weather %>%
+december_weather <- december_weather %>%
                     group_by(station, lon, lat) %>%
                     summarize(avg_tmpc = mean(tmpc, na.rm = TRUE), cnt_tmpc = n())
 
+for (i in 1:5) {
+
 # convert tibbles to matrices
-X <- data.matrix(november_weather[2:3])
-Z <- data.matrix(november_weather[4])
+X <- data.matrix(december_weather[2:3])
+Z <- data.matrix(december_weather[4])
 
 # sampling
 n <- 5
@@ -38,13 +42,13 @@ probe_x = X[samples, 1]
 probe_y = X[samples, 2]
 probe_z = Z[samples, 1]
 
+# fitting function
 conv <- convHull(X)
 hull_pol <- conv@polygons@polygons[[1]]@Polygons[[1]]@coords
 
 verts_x <- hull_pol[,1]
 verts_y <- hull_pol[,2]
 
-# fitting function
 fit_into_hull <- function(m, Y1, Y2, verts_x, verts_y, W) {
   for (i in 1:m[1]) {
     for (j in 1:m[2])
@@ -75,11 +79,21 @@ Y1 <- sort(append(Y1, probe_x))
 Y2 <- sort(append(Y2, probe_y))
 
 # verify function
-verify <- function(n, W, Y1, Y2, probe_x, probe_y, probe_z) {
+verify <- function(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, method) {
   for (i in 1:n) {
-    cat("Predicted temperature:", W[which(Y2 == probe_y[i]), which(Y1 == probe_x[i])], "\n")
-    cat("Actual temperature:", probe_z[i], "\n")
+    actual <- probe_z[i]
+    predicted <- W[which(Y2 == probe_y[i]), which(Y1 == probe_x[i])]
+    accuracy <- abs(actual - predicted)
+    results <-
+      add_row(
+        results,
+        actual_tmpc = actual,
+        predicted_tmpc = predicted,
+        accuracy = accuracy,
+        method = method
+      )
   }
+  return(results)
 }
 
 # create a data frame from all combinations of factor variables
@@ -100,7 +114,7 @@ G = matrix(0, 1, 1)
 g = matrix(0, 1, 1)
 
 # plotting level curves results function
-plot_japan <- function(x, y, z) {
+plot_curves <- function(x, y, z) {
   cols <- matlab.like2(40)
   plot_ly(
     x = x,
@@ -111,7 +125,7 @@ plot_japan <- function(x, y, z) {
     contours = list(
       start = 0,
       size = 1,
-      end = 30,
+      end = 20,
       showlabels = TRUE
     )
   )
@@ -130,9 +144,9 @@ KRIG <- Krig(
 )
 
 W <- matrix(KRIG$Z, m[1], m[2])
-W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-verify(n, W, Y1, Y2, probe_x, probe_y, probe_z)
-# plot_japan(Y1, Y2, W)
+# W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+# plot_curves(Y1, Y2, W)
+results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "simple-kriging")
 
 
 # ordinary kriging
@@ -147,12 +161,12 @@ KRIG <- Krig(
 )
 
 W <- matrix(KRIG$Z, m[1], m[2])
-W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-verify(n, W, Y1, Y2, probe_x, probe_y, probe_z)
-# plot_japan(Y1, Y2, W)
+# W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+# plot_curves(Y1, Y2, W)
+results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "ordinary-kriging")
 
 
-# kriging universal
+# universal kriging
 G <- rbind(t(X), t(X * X), t(X * X * X))
 g <- rbind(t(Y), t(Y * Y), t(Y * Y * Y))
 
@@ -167,8 +181,9 @@ KRIG <- Krig(
 )
 
 W <- matrix(KRIG$Z, m[1], m[2])
-W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-# plot_japan(Y1, Y2, W)
+# W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+# plot_curves(Y1, Y2, W)
+results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "universal-kriging")
 
 
 # idw
@@ -180,8 +195,9 @@ predictions = idw(formula = val ~ 1,
                   newdata = grid)
 
 W <- matrix(predictions$var1.pred, m[1], m[2])
-W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-# plot_japan(Y1, Y2, W)
+# W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+# plot_curves(Y1, Y2, W)
+results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "idw")
 
 
 # linear regression
@@ -190,5 +206,8 @@ model <- lm(val ~ (x + y), data = data)
 predictions <- predict(model, new = grid)
 
 W <- matrix(predictions, m[1], m[2])
-W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
-# plot_japan(Y1, Y2, W)
+# W <- fit_into_hull(m, Y1, Y2, verts_x, verts_y, W)
+# plot_curves(Y1, Y2, W)
+results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "linear-regression")
+
+}
