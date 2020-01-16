@@ -29,7 +29,7 @@ december_weather <- december_weather %>%
                     group_by(station, lon, lat) %>%
                     summarize(avg_tmpc = mean(tmpc, na.rm = TRUE), cnt_tmpc = n())
 
-for (i in 1:5) {
+for (i in 1:100) {
 
 # convert tibbles to matrices
 X <- data.matrix(december_weather[2:3])
@@ -211,3 +211,6 @@ W <- matrix(predictions, m[1], m[2])
 results <- verify(n, W, Y1, Y2, probe_x, probe_y, probe_z, results, "linear-regression")
 
 }
+
+file_name <- paste0("csv/", format(Sys.time(), "%Y-%m-%d_%H-%M-%S_"), "results.csv")
+write.csv(results, file_name)
